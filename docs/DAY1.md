@@ -1,59 +1,55 @@
-# Guided lab – Day 1
+# Labo guidé – Jour 1
 
-## 1. Data into `data/`
+## 1. Données dans `data/`
 
-Competition tables are in git, folder `data/`.
-You should see `X_train.csv`, `y_train.csv`, `X_test.csv`, and `sample_submission.csv`. Every teammate needs these CSVs locally.
+Les tables de la compétition sont sur git, dans le dossier `data/`.
+Vous devriez voir `X_train.csv`, `y_train.csv`, `X_test.csv` et `sample_submission.csv`. Chaque membre de l'équipe a besoin de ces fichiers CSV en local.
 
-### What the data is about and the goal
+### Sujet des données et objectif
 
-- **Context**: Parkinson’s disease (PD) causes motor symptoms (tremor, rigidity, bradykinesia) scored via MDS-UPDRS (0–132). Patients taking levodopa fluctuate between an **ON** state (symptoms relieved) and an **OFF** state (medication worn off). The OFF score reflects underlying neurodegeneration, but clinic measurements are biased by drug timing, human scoring subjectivity, and missingness (OFF tests are uncomfortable and often skipped).
-- **The data**: Synthetic multi-cohort patient visits at irregular intervals. Columns include patient demographics, genetics, medication dose (`ledd`), measured `on` and `off` motor scores, and intake delays (`time_since_intake_`*). Test patients do not overlap train patients (`patient_id` holdout).
-- **The goal**: Predict the debiased **true OFF** motor score (`target`) for every patient visit by capturing disease progression over time, leveraging drug intake delays, and treating missingness as signal. See [CONTEXT.md](CONTEXT.md) for full clinical background.
+- **Contexte** : La maladie de Parkinson (MP) provoque des symptômes moteurs (tremblements, rigidité, bradykinésie) évalués via le score MDS-UPDRS (0–132). Les patients prenant de la lévodopa oscillent entre un état **ON** (symptômes soulagés) et un état **OFF** (les effets du médicament se sont dissipés). Le score OFF reflète la neurodégénérescence sous-jacente, mais les mesures cliniques sont biaisées par le moment de la prise des médicaments, la subjectivité humaine de l'évaluation et les données manquantes (les tests OFF sont inconfortables et souvent ignorés).
+- **Les données** : Visites synthétiques de patients de cohortes multiples à des intervalles irréguliers. Les colonnes incluent les données démographiques, génétiques, la dose de médicament (`ledd`), les scores moteurs mesurés `on` et `off`, et les délais de prise (`time_since_intake_`*). Les patients du jeu de test ne chevauchent pas ceux de l'entraînement (séparation par `patient_id`).
+- **L'objectif** : Prédire le **véritable score OFF** sans biais (`target`) pour chaque visite de patient en capturant la progression de la maladie au fil du temps, en exploitant les délais de prise des médicaments, et en traitant les valeurs manquantes comme un signal. Voir [CONTEXT.md](CONTEXT.md) pour le contexte clinique complet.
 
+——
 
+## 2. Explorer les données (EDA)
 
-## 2. Explore the data (EDA)
+L'**Analyse Exploratoire des Données (EDA)** consiste à observer les tables *avant* de choisir un modèle : dimensions, valeurs manquantes, groupes de `patient_id`, ce qui ressemble à une fuite de données (leak). Dans Bob, c'est l'étape **G-EDA** (`explore-ml-data`). Elle génère `data/eda.py`, un court rapport narratif `data/eda.md` et des pages interactives `data/eda_<table>.html`.
 
-**Exploratory data analysis (EDA)** is looking at the tables *before* you pick a model: shape, missingness, `patient_id` groups, what looks like a leak. In Bob this is the **G-EDA** step (`explore-ml-data`). It writes `data/eda.py`, a short narrative `data/eda.md`, and interactive `data/eda_<table>.html` pages.
-
-### Example prompt:
+### Exemple de prompt :
 
 ```
-Explore my data in the `data/` folder.
+Explore mes données dans le dossier `data/`.
 ```
 
+### Questions du cahier d'exercices
 
+Questions auxquelles réfléchir pendant que vous parcourez les pages d'EDA (`data/eda_<table>.html`, ou le rapport `eda` sur Skore Hub). Inutile de rédiger des réponses. Elles sont là pour vous indiquer ce qu'il faut observer.
 
-### Workbook questions
+1. Combien de visites et combien de patients distincts y a-t-il dans l'entraînement ? Dans le test ? Quel est le nombre typique de visites par patient, et quel est le maximum ?
+2. Quelles sont les trois colonnes ayant le plus de valeurs manquantes ? Quelle fraction des visites n'a **aucun** score `off` ? **Aucun** score `on` ? Y a-t-il une visite où les deux sont manquants ?
+3. Observez la distribution de `target`. Quelle plage couvre-t-elle par rapport à la plage théorique de 0–132 du MDS-UPDRS ? Est-elle asymétrique ?
+4. Quelles colonnes semblent les plus associées à `target` ? Le score `off` (le score mesuré) est-il une copie presque exacte de `target`, ou est-il clairement différent ? Qu'en est-il de `on` ?
+5. La variable `ledd` est-elle manquante de façon aléatoire, ou est-elle manquante plus souvent pour certaines valeurs de `cohort` ? Que cela pourrait-il signifier d'un point de vue clinique ?
+6. Quelles colonnes ne fourniriez-vous **pas** à un modèle, et pourquoi ? (Indice : pensez aux identifiants et aux fuites de données).
 
-Questions to think about as you browse the EDA pages (`data/eda_<table>.html`, or the `eda` report on Skore Hub). No need to write anything down. They are there to point you at what to look for.
+## 3. Dummy mean (moyenne naïve) : un seuil de base
 
-1. How many visits and how many distinct patients are in train? In test? What is the typical number of visits per patient, and what is the most?
-2. Which three columns have the most missing values? What fraction of visits have **no** `off` score? **No** `on` score? Is there any visit where both are missing?
-3. Look at the distribution of `target`. What range does it cover, compared with the theoretical 0–132 range of MDS-UPDRS? Is it skewed?
-4. Which columns look most associated with `target`? Is `off` (the measured score) a near copy of `target`, or clearly different? What about `on`?
-5. Is `ledd` missing at random, or is it missing more often for some `cohort` values? What could that mean clinically?
-6. Which columns would you **not** feed to a model, and why? (Hint: think about identifiers and leakage.)
+Avant de construire un vrai modèle, construisez le plus paresseux possible. Un modèle **dummy mean** (régresseur naïf par la moyenne) ignore tout ce qu'il sait d'une visite (âge, médicaments, scores mesurés) et donne toujours la même réponse : la `target` **moyenne** sur toutes les visites d'entraînement. Si le véritable score OFF moyen dans l'entraînement est de 30, il prédira 30 pour chaque patient, à chaque visite.
+Cela semble inutile, et en tant que modèle, ça l'est. En tant que **point de référence** (*baseline*), c'est essentiel :
 
+- **Il fixe le seuil de base.** Son erreur vous indique à quel point vous avez tort quand vous ne savez rien. Tout modèle réel doit faire mieux ; sinon, ses colonnes ne sont d'aucune utilité.
+- **Il détecte les bugs tôt.** Si un modèle "intelligent" obtient un score identique ou pire que le modèle naïf, c'est que quelque chose en amont est cassé, et non le modèle : les données ont été mal chargées, les lignes ont été désalignées de leurs cibles, la métrique est mal calculée, ou le fichier de soumission est mal formaté.
+- **Il donne du sens à vos scores.** Une RMSE de 8 ne veut rien dire en soi. "8, comparé à 12 pour le modèle naïf" signifie que votre modèle supprime un tiers de l'erreur.
 
+Commencez par charger les visites.
 
-## 3. Dummy mean: a floor
+Chaque **ligne** correspond à une **visite**. La cible est un **véritable score OFF sans biais** MDS-UPDRS (`y_train.target`). Les scores cliniques ON/OFF sont biaisés (subjectivité, valeurs manquantes, timing de la lévodopa).
 
-Before building a real model, build the laziest possible one. A **dummy mean** model ignores everything it knows about a visit (age, medication, measured scores) and always gives the same answer: the **average** `target` over all training visits. If the average true OFF score in train is 30, it predicts 30 for every patient, every visit.
-This sounds useless, and as a model it is. As a **reference point** (a *baseline*), it is essential:
-
-- **It sets the floor.** Its error tells you how wrong you are when you know nothing. Any real model must do better; otherwise its columns are not helping at all.
-- **It catches bugs early.** If a "smart" model scores the same as or worse than the dummy, something upstream is broken, not the model: the data was loaded wrong, rows got misaligned with their targets, the metric is miscomputed, or the submission file is malformed.
-- **It gives your scores meaning.** An RMSE of 8 means nothing on its own. "8, compared with 12 for the dummy" means your model removes a third of the error.
-
-Start by loading the visits.
-
-Each **row** is a **visit**. The target is a **true / unbiased OFF** MDS-UPDRS motor score (`y_train.target`). Clinic ON/OFF scores are biased (subjectivity, missing values, levodopa timing).
-
-- `patient_id`: several visits per patient. The Kaggle holdout is **by patient**.
-- **Missingness**: `on`, `off`, `ledd`, `gene`, intake delays are often missing.
-- **ON / OFF / LEDD / timing**: `on`, `off`, `ledd`, `time_since_intake_on`, `time_since_intake_off`. On train, years since diagnosis is `age - age_at_diagnosis` (test may already have `time_since_diagnosis`).
+- `patient_id` : plusieurs visites par patient. La séparation (holdout) Kaggle se fait **par patient**.
+- **Valeurs manquantes** : `on`, `off`, `ledd`, `gene`, et les délais de prise sont souvent manquants.
+- **ON / OFF / LEDD / timing** : `on`, `off`, `ledd`, `time_since_intake_on`, `time_since_intake_off`. Dans l'entraînement, le nombre d'années depuis le diagnostic est `age - age_at_diagnosis` (le test peut déjà comporter `time_since_diagnosis`).
 
 ```python
 import pandas as pd
@@ -66,11 +62,11 @@ visits = X_train.merge(y_train, on="Index")
 y = visits["target"]
 ```
 
-Use `sample_submission.csv` as the shape template: columns `Index,target`. Each experiment writes its file to `submissions/<report-key>.csv`, so the columns and the filename both match the competition.
+Utilisez `sample_submission.csv` comme modèle de structure : colonnes `Index,target`. Chaque expérience écrit son fichier dans `submissions/<report-key>.csv`, de sorte que les colonnes et le nom de fichier correspondent à la compétition.
 
-- **What it is**: Dummy always predicts the same number: the average true OFF in train.
-- **How it works**: it ignores every column. You still pass an `X` so `skore.evaluate` can line up the same rows as `y`.
-- **Why here**: if you cannot beat this floor, the data load, the metric, or the upload is broken - not the model.
+- **Ce que c'est** : Le modèle naïf (Dummy) prédit toujours le même nombre : le véritable score OFF moyen de l'entraînement.
+- **Comment ça marche** : il ignore toutes les colonnes. Vous passez quand même un `X` pour que `skore.evaluate` puisse aligner les mêmes lignes avec `y`.
+- **Pourquoi le faire ici** : si vous n'arrivez pas à battre ce seuil de base, c'est que le chargement des données, la métrique ou l'upload est cassé - pas le modèle.
 
 ```python
 from sklearn.dummy import DummyRegressor
@@ -94,9 +90,9 @@ report = evaluate(dummy, X, y)
 report.metrics.rmse()
 ```
 
-`skore.evaluate` is the entry point. With no `splitter=`, it uses default `splitter=0.2` (a random row holdout). That is enough to check the floor; grouped splits come on Day 2.
+`skore.evaluate` est le point d'entrée. Sans `splitter=`, il utilise par défaut `splitter=0.2` (une retenue aléatoire de lignes). C'est suffisant pour vérifier le seuil de base ; les séparations groupées (grouped splits) viendront le Jour 2.
 
-**Project** stores reports. **Hub** is required for a valid Submission (the URL printed after `put`). `name=` is your project inside the hub workspace from `.skore`. Always `load_skore_credentials()` then `login(mode="hub")`:
+**Project** stocke les rapports. **Hub** est requis pour une soumission valide (l'URL affichée après `put`). `name=` est votre projet à l'intérieur de l'espace de travail (workspace) du hub depuis `.skore`. Faites toujours `load_skore_credentials()` puis `login(mode="hub")` :
 
 ```python
 from parkinson.hub import load_skore_credentials
@@ -106,24 +102,22 @@ cfg = load_skore_credentials()
 login(mode="hub")
 project = Project(name="bobathon-esilv", mode="hub", workspace=cfg["workspace"])
 project.put("01_dummy", report)
-# The console prints: Consult your report at https://skore.probabl.ai/…
+# La console affiche : Consult your report at [https://skore.probabl.ai/](https://skore.probabl.ai/)…
 ```
 
-`Project.get` is by **id** from `project.summarize()`, not by the string key you passed to `put`.
+`Project.get` se fait par **id** depuis `project.summarize()`, et non par la clé sous forme de chaîne de caractères que vous avez passée à `put`.
 
-### Example prompt:
+### Exemple de prompt :
 
 ```
-Run a dummy regressor from sklearn to act as my baseline model. Push to the hub with the name '01_dummy' as the report name to the project 'bobathon-esilv'.
+Exécute un "dummy regressor" de sklearn pour servir de modèle de référence. Pousse-le sur le hub avec le nom '01_dummy' comme nom de rapport vers le projet 'bobathon-esilv'.
 ```
 
+### Questions du cahier d'exercices
 
+Ouvrez l'URL du rapport `01_dummy` sur Skore Hub et répondez à partir de là.
 
-### Workbook questions
-
-Open the `01_dummy` report URL on Skore Hub and answer from there.
-
-1. What is the dummy's RMSE? Compare it with the standard deviation of `target` from your EDA. Why are those two numbers so close?
-2. Look at the prediction-error plot (predicted vs. actual). Describe its shape. What would a perfect model look like on the same plot?
-3. Write the dummy RMSE somewhere visible. Every model from now on must beat it. By how much would a model need to beat it before you call the improvement real, rather than noise?
+1. Quelle est la RMSE du modèle naïf (dummy) ? Comparez-la avec l'écart-type (standard deviation) de `target` issu de votre EDA. Pourquoi ces deux nombres sont-ils si proches ?
+2. Regardez le graphique d'erreur de prédiction (prédit vs réel). Décrivez sa forme. À quoi ressemblerait un modèle parfait sur ce même graphique ?
+3. Notez la RMSE du modèle naïf quelque part de visible. Chaque modèle à partir de maintenant devra la battre. De combien un modèle devrait-il la battre avant que vous ne considériez l'amélioration comme réelle, plutôt que comme du bruit ?
 
